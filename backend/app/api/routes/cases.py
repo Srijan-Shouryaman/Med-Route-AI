@@ -10,8 +10,8 @@ import json
 
 from app.schemas.assignment import ApprovalRequest,OverrideRequest
 
-from app.recommendation.recommendation_service import generate_recommendations
-from app.assignment.assignment_service import approve_assignment,override_assignment
+from app.services.recommendation.recommendation_service import generate_recommendations
+from app.services.assignment.assignment_service import approve_assignment,override_assignment
 
 
 router = APIRouter(
