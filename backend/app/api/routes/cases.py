@@ -7,11 +7,12 @@ from app.api.dependencies import get_db
 from app.ml.inference.prediction_service import predict_department
 
 import json
-from pydantic import BaseModel
 
+from app.schemas.assignment import ApprovalRequest,OverrideRequest
 
-class ApprovalRequest(BaseModel):
-    approving_user: str
+from app.recommendation.recommendation_service import generate_recommendations
+from app.assignment.assignment_service import approve_assignment,override_assignment
+
 
 router = APIRouter(
     prefix="/api/cases",
@@ -207,6 +208,34 @@ def get_case_prediction(
 
     return prediction
 
+@router.post("/{case_id}/recommendations")
+def generate_case_recommendations(
+    case_id: str,
+    db: Session = Depends(get_db)
+):
+    try:
+        result = generate_recommendations(case_id, db)
+
+        db.commit()
+
+        return result
+
+    except ValueError as e:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+
+    except Exception:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to generate recommendations"
+        )
+
 @router.get("/{case_id}/recommendations")
 def get_case_recommendations(
     case_id: str,
@@ -280,6 +309,74 @@ def get_case_assignment(
         )
 
     return assignment
+
+@router.post("/{case_id}/assignment/approve")
+def approve_case_assignment(
+    case_id: str,
+    request: ApprovalRequest,
+    db: Session = Depends(get_db)
+):
+    try:
+        result = approve_assignment(
+            case_id,
+            request.approving_user,
+            db
+        )
+
+        db.commit()
+
+        return result
+
+    except ValueError as e:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+
+    except Exception:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to approve assignment"
+        )
+
+@router.post("/{case_id}/assignment/override")
+def override_case_assignment(
+    case_id: str,
+    request: OverrideRequest,
+    db: Session = Depends(get_db)
+):
+    try:
+        result = override_assignment(
+            case_id,
+            request.selected_team_id,
+            request.override_reason,
+            request.approving_user,
+            db
+        )
+
+        db.commit()
+
+        return result
+
+    except ValueError as e:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+
+    except Exception:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to override assignment"
+        )
 
 
 @router.get("/{case_id}")
