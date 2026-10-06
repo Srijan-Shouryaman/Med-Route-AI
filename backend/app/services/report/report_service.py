@@ -3,7 +3,7 @@ from hashlib import sha256
 import uuid
 
 from fastapi import UploadFile
-
+from app.services.report.ocr_service import extract_text_from_pdf
 
 BASE_DIR = Path(__file__).resolve().parents[3]
 UPLOAD_DIR = BASE_DIR / "storage" / "reports"
@@ -52,3 +52,9 @@ async def save_uploaded_file(file: UploadFile):
         "file_size": file_size,
         "sha256_hash": sha256_hash,
     }
+    
+def extract_report_text(file_path: str) -> str:
+    """
+    Extract text from a stored medical report using OCR.
+    """
+    return extract_text_from_pdf(file_path)
