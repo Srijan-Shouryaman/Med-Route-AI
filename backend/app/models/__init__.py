@@ -6,3 +6,5 @@ from app.models.recommendation import Recommendation
 from app.models.assignment import Assignment
 from app.models.audit_log import AuditLog
 from app.models.team_performance import TeamPerformance
+from app.models.user import User
+from app.models.patient import Patient
