@@ -1,13 +1,16 @@
-from app.services.report.ocr_service import extract_text_from_pdf
+from app.services.report.ocr_service import prepare_ml_text
 
+text = """--- Page 1 ---
+PAT1OO Medical Report
+Patient Information Patient ID: PAT1OO
+Patient Name: Test Patient 100
+Date of Birth: 15-May-2002
+Gender: Male
+Clinical Presentation The patient presents with chest pain and shortness of breath.
+Symptoms have prompted clinical evaluation for a possible cardiovascular cause_
+Investigations ECG: Sinus rhythm_
+Clinical findings require further cardiovascular assessment
+Assessment The findings are suggestive of a possible cardiovascular condition.
+Recommendation Cardiology consultation is recommended for further evaluation and management:"""
 
-PDF_PATH = r"storage\reports\6b8e91d485b147a4b0a837fa1a6e37d6.pdf"
-
-
-text = extract_text_from_pdf(PDF_PATH)
-
-print("\n========== OCR RESULT ==========\n")
-print(text)
-print("\n========== END OCR RESULT ==========\n")
-
-print(f"Extracted characters: {len(text)}")
+print(prepare_ml_text(text))

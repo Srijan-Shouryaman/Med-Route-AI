@@ -69,6 +69,7 @@ def predict_case(
         text("""
             SELECT
                 case_id,
+                report_id,
                 report_summary,
                 status
             FROM cases
@@ -93,7 +94,48 @@ def predict_case(
             detail=f"Case cannot be predicted because its current status is '{case['status']}'"
         )
 
-    result = predict_department(case["report_summary"])
+    if case["report_id"] is not None:
+
+        report_result = db.execute(
+            text("""
+                SELECT
+                    ml_text,
+                    extraction_status
+                FROM reports
+                WHERE report_id = :report_id
+            """),
+            {
+                "report_id": case["report_id"]
+            }
+        )
+
+        report = report_result.mappings().fetchone()
+
+        if report is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Linked report not found"
+            )
+
+        if report["extraction_status"] != "EXTRACTED":
+            raise HTTPException(
+                status_code=409,
+                detail="Linked report has not been successfully extracted"
+            )
+
+        if not report["ml_text"]:
+            raise HTTPException(
+                status_code=409,
+                detail="Linked report has no ML text"
+            )
+
+        prediction_text = report["ml_text"]
+
+    else:
+
+        prediction_text = case["report_summary"]
+
+    result = predict_department(prediction_text)
 
     department_result = db.execute(
         text("""
@@ -172,6 +214,7 @@ def predict_case(
         "confidence_level": result["confidence_level"],
         "class_probabilities": result["class_probabilities"]
     }
+
 
 @router.get("/{case_id}/prediction")
 def get_case_prediction(

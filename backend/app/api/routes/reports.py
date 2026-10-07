@@ -35,7 +35,6 @@ async def upload_report(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    # 1. Verify patient exists.
     patient = db.execute(
         text("""
             SELECT patient_id
@@ -53,10 +52,8 @@ async def upload_report(
             detail="Patient not found"
         )
 
-    # 2. Store original uploaded file.
     file_data = await save_uploaded_file(file)
 
-    # 3. Create report record first.
     result = db.execute(
         text("""
             INSERT INTO reports (
@@ -68,6 +65,7 @@ async def upload_report(
                 file_size,
                 sha256_hash,
                 extracted_text,
+                ml_text,
                 extraction_status,
                 extraction_error,
                 uploaded_by
@@ -80,6 +78,7 @@ async def upload_report(
                 :content_type,
                 :file_size,
                 :sha256_hash,
+                NULL,
                 NULL,
                 'PENDING',
                 NULL,
@@ -95,6 +94,7 @@ async def upload_report(
                 file_size,
                 sha256_hash,
                 extracted_text,
+                ml_text,
                 extraction_status,
                 extraction_error,
                 uploaded_by,
@@ -114,25 +114,27 @@ async def upload_report(
 
     report = result.mappings().fetchone()
 
-
     db.commit()
 
     try:
-        extracted_text = extract_report_text(
+        extraction_result = extract_report_text(
             file_data["file_path"]
         )
+
+        extracted_text = extraction_result["extracted_text"]
+        ml_text = extraction_result["ml_text"]
 
         if not extracted_text:
             raise ValueError(
                 "OCR completed but no text was extracted"
             )
 
-        # 5. Save OCR result.
         result = db.execute(
             text("""
                 UPDATE reports
                 SET
                     extracted_text = :extracted_text,
+                    ml_text = :ml_text,
                     extraction_status = 'EXTRACTED',
                     extraction_error = NULL
                 WHERE report_id = :report_id
@@ -146,6 +148,7 @@ async def upload_report(
                     file_size,
                     sha256_hash,
                     extracted_text,
+                    ml_text,
                     extraction_status,
                     extraction_error,
                     uploaded_by,
@@ -153,11 +156,13 @@ async def upload_report(
             """),
             {
                 "extracted_text": extracted_text,
+                "ml_text": ml_text,
                 "report_id": report["report_id"],
             }
         )
 
         report = result.mappings().fetchone()
+
         db.commit()
 
     except Exception as exc:
@@ -181,6 +186,7 @@ async def upload_report(
                     file_size,
                     sha256_hash,
                     extracted_text,
+                    ml_text,
                     extraction_status,
                     extraction_error,
                     uploaded_by,
@@ -193,6 +199,7 @@ async def upload_report(
         )
 
         report = result.mappings().fetchone()
+
         db.commit()
 
     return report
