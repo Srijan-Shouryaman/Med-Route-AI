@@ -10,7 +10,7 @@ from app.api.routes.assignments import router as assignments_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.patients import router as patients_router
 from app.api.routes.reports import router as reports_router
-
+from app.api.routes import diagnosis
 
 app = FastAPI(
     title="MedRoute AI",
@@ -29,6 +29,7 @@ app.include_router(assignments_router)
 app.include_router(auth_router)
 app.include_router(patients_router)
 app.include_router(reports_router)
+app.include_router(diagnosis.router)
 
 
 @app.get("/health")
