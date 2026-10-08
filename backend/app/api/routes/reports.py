@@ -37,7 +37,9 @@ async def upload_report(
 ):
     patient = db.execute(
         text("""
-            SELECT patient_id
+            SELECT
+                patient_id,
+                patient_ref_id
             FROM patients
             WHERE patient_id = :patient_id
         """),
@@ -65,7 +67,6 @@ async def upload_report(
                 file_size,
                 sha256_hash,
                 extracted_text,
-                ml_text,
                 extraction_status,
                 extraction_error,
                 uploaded_by
@@ -78,7 +79,6 @@ async def upload_report(
                 :content_type,
                 :file_size,
                 :sha256_hash,
-                NULL,
                 NULL,
                 'PENDING',
                 NULL,
@@ -94,7 +94,6 @@ async def upload_report(
                 file_size,
                 sha256_hash,
                 extracted_text,
-                ml_text,
                 extraction_status,
                 extraction_error,
                 uploaded_by,
@@ -129,12 +128,16 @@ async def upload_report(
                 "OCR completed but no text was extracted"
             )
 
+        if not ml_text:
+            raise ValueError(
+                "ML text preparation produced no usable text"
+            )
+
         result = db.execute(
             text("""
                 UPDATE reports
                 SET
                     extracted_text = :extracted_text,
-                    ml_text = :ml_text,
                     extraction_status = 'EXTRACTED',
                     extraction_error = NULL
                 WHERE report_id = :report_id
@@ -148,7 +151,6 @@ async def upload_report(
                     file_size,
                     sha256_hash,
                     extracted_text,
-                    ml_text,
                     extraction_status,
                     extraction_error,
                     uploaded_by,
@@ -156,12 +158,53 @@ async def upload_report(
             """),
             {
                 "extracted_text": extracted_text,
-                "ml_text": ml_text,
                 "report_id": report["report_id"],
             }
         )
 
         report = result.mappings().fetchone()
+
+        case_number_result = db.execute(
+            text("""
+                SELECT COALESCE(
+                    MAX(
+                        CAST(
+                            SUBSTRING(case_id FROM 2)
+                            AS INTEGER
+                        )
+                    ),
+                    0
+                ) + 1
+                FROM cases
+                WHERE case_id ~ '^C[0-9]+$'
+            """)
+        )
+
+        next_case_number = case_number_result.scalar_one()
+        case_id = f"C{next_case_number:04d}"
+
+        db.execute(
+            text("""
+                INSERT INTO cases (
+                    case_id,
+                    patient_ref_id,
+                    report_summary,
+                    report_id
+                )
+                VALUES (
+                    :case_id,
+                    :patient_ref_id,
+                    :report_summary,
+                    :report_id
+                )
+            """),
+            {
+                "case_id": case_id,
+                "patient_ref_id": patient["patient_ref_id"],
+                "report_summary": ml_text,
+                "report_id": report["report_id"],
+            }
+        )
 
         db.commit()
 
@@ -186,7 +229,6 @@ async def upload_report(
                     file_size,
                     sha256_hash,
                     extracted_text,
-                    ml_text,
                     extraction_status,
                     extraction_error,
                     uploaded_by,
@@ -203,3 +245,90 @@ async def upload_report(
         db.commit()
 
     return report
+
+
+@router.get("/")
+def get_reports(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    result = db.execute(
+        text("""
+            SELECT
+                r.report_id,
+                r.patient_id,
+                p.patient_ref_id,
+                p.full_name AS patient_name,
+                c.case_id,
+                r.original_filename,
+                r.stored_filename,
+                r.content_type,
+                r.file_size,
+                r.sha256_hash,
+                r.extraction_status,
+                r.extraction_error,
+                r.uploaded_by,
+                r.uploaded_at
+            FROM reports r
+            INNER JOIN patients p
+                ON p.patient_id = r.patient_id
+            LEFT JOIN cases c
+                ON c.report_id = r.report_id
+            ORDER BY
+                r.uploaded_at DESC,
+                r.report_id DESC
+        """)
+    )
+
+    return [
+        dict(row)
+        for row in result.mappings().all()
+    ]
+
+
+@router.get("/{report_id}")
+def get_report(
+    report_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    result = db.execute(
+        text("""
+            SELECT
+                r.report_id,
+                r.patient_id,
+                p.patient_ref_id,
+                p.full_name AS patient_name,
+                c.case_id,
+                r.original_filename,
+                r.stored_filename,
+                r.file_path,
+                r.content_type,
+                r.file_size,
+                r.sha256_hash,
+                r.extracted_text,
+                r.extraction_status,
+                r.extraction_error,
+                r.uploaded_by,
+                r.uploaded_at
+            FROM reports r
+            INNER JOIN patients p
+                ON p.patient_id = r.patient_id
+            LEFT JOIN cases c
+                ON c.report_id = r.report_id
+            WHERE r.report_id = :report_id
+        """),
+        {
+            "report_id": report_id
+        }
+    )
+
+    report = result.mappings().fetchone()
+
+    if report is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Report not found"
+        )
+
+    return dict(report)

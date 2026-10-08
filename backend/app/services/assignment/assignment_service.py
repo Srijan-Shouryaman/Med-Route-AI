@@ -3,7 +3,6 @@ import json
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-
 def approve_assignment(case_id, approving_user, db):
     case_result = db.execute(
         text("""
@@ -325,3 +324,93 @@ def override_assignment(
         "override_reason": override_reason
     }
     
+def update_case_status(
+    case_id,
+    new_status,
+    actor,
+    db
+):
+    case_result = db.execute(
+        text("""
+            SELECT
+                case_id,
+                status
+            FROM cases
+            WHERE case_id = :case_id
+        """),
+        {
+            "case_id": case_id
+        }
+    )
+
+    case = case_result.mappings().fetchone()
+
+    if case is None:
+        raise ValueError("Case not found")
+
+    current_status = case["status"]
+
+    allowed_transitions = {
+        "Assigned": {
+            "In Progress"
+        },
+        "In Progress": {
+            "Resolved"
+        }
+    }
+
+    if current_status not in allowed_transitions:
+        raise ValueError(
+            f"Case cannot transition from '{current_status}'"
+        )
+
+    if new_status not in allowed_transitions[current_status]:
+        raise ValueError(
+            f"Invalid status transition from "
+            f"'{current_status}' to '{new_status}'"
+        )
+
+    db.execute(
+        text("""
+            UPDATE cases
+            SET status = :new_status
+            WHERE case_id = :case_id
+        """),
+        {
+            "case_id": case_id,
+            "new_status": new_status
+        }
+    )
+
+    db.execute(
+        text("""
+            INSERT INTO audit_logs (
+                case_id,
+                event_type,
+                actor,
+                details
+            )
+            VALUES (
+                :case_id,
+                :event_type,
+                :actor,
+                CAST(:details AS JSONB)
+            )
+        """),
+        {
+            "case_id": case_id,
+            "event_type": "CASE_STATUS_CHANGED",
+            "actor": actor,
+            "details": json.dumps({
+                "previous_status": current_status,
+                "new_status": new_status
+            })
+        }
+    )
+
+    return {
+        "case_id": case_id,
+        "previous_status": current_status,
+        "status": new_status,
+        "actor": actor
+    }

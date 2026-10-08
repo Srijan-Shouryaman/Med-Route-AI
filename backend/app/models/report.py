@@ -1,46 +1,54 @@
 from sqlalchemy import (
     Column,
-    Integer,
     String,
     Text,
-    BigInteger,
+    Boolean,
     TIMESTAMP,
-    ForeignKey,
+    Integer
 )
+
 from app.core.database import Base
 
 
-class Report(Base):
-    __tablename__ = "reports"
+class Case(Base):
+    __tablename__ = "cases"
 
-    report_id = Column(Integer, primary_key=True)
-
-    patient_id = Column(
-        Integer,
-        ForeignKey("patients.patient_id"),
-        nullable=False
+    case_id = Column(
+        String(10),
+        primary_key=True
     )
 
-    original_filename = Column(String(255), nullable=False)
-    stored_filename = Column(String(255), nullable=False)
-    file_path = Column(Text, nullable=False)
-
-    content_type = Column(String(100), nullable=False)
-    file_size = Column(BigInteger, nullable=False)
-    sha256_hash = Column(String(64), nullable=False)
-
-    extracted_text = Column(Text, nullable=True)
-    extraction_status = Column(
+    patient_ref_id = Column(
         String(30),
-        nullable=False,
-        default="PENDING"
-    )
-    extraction_error = Column(Text, nullable=True)
-
-    uploaded_by = Column(
-        Integer,
-        ForeignKey("users.user_id"),
         nullable=False
     )
 
-    uploaded_at = Column(TIMESTAMP, nullable=False)
+    report_summary = Column(
+        Text,
+        nullable=False
+    )
+
+    is_emergency = Column(
+        Boolean,
+        nullable=False
+    )
+
+    priority = Column(
+        String(9),
+        nullable=False
+    )
+
+    submitted_at = Column(
+        TIMESTAMP,
+        nullable=False
+    )
+
+    status = Column(
+        String(30),
+        nullable=False
+    )
+
+    report_id = Column(
+        Integer,
+        nullable=True
+    )
