@@ -2,7 +2,6 @@ import { useState } from "react";
 import { ArrowLeft, LoaderCircle, Save } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import Card from "../components/ui/Card.jsx";
-import PageHeader from "../components/ui/PageHeader.jsx";
 import { createPatient, getPatientRequestError } from "../services/patientApi.js";
 
 const initialValues = {
@@ -52,22 +51,19 @@ export default function PatientFormPage() {
   }
 
   return (
-    <>
-      <PageHeader
-        eyebrow="Patient records"
-        title="Add patient"
-        description="Enter the patient details used to associate reports with the correct record."
-        actions={<Link className="patient-back-link" to="/patients"><ArrowLeft size={15} aria-hidden="true" /> Patient list</Link>}
-      />
-
-      <Card className="patient-form-card">
-        <div className="patient-form-intro">
-          <p className="card-eyebrow">New record</p>
-          <h2>Patient information</h2>
-          <p>Patient reference ID and patient name are required. Other information can be added when available.</p>
+    <Card className="patient-form-card">
+      <div className="patient-form-intro">
+        <div className="patient-form-intro-heading">
+          <div>
+            <p className="card-eyebrow">New record</p>
+            <h2>Patient information</h2>
+          </div>
+          <Link className="patient-back-link" to="/patients"><ArrowLeft size={15} aria-hidden="true" /> Patient list</Link>
         </div>
+        <p>Patient reference ID and patient name are required. Other information can be added when available.</p>
+      </div>
 
-        <form className="patient-form" onSubmit={handleSubmit}>
+      <form className="patient-form" onSubmit={handleSubmit}>
           <div className="patient-form-grid">
             <label className="patient-field">
               <span>Patient reference ID <b aria-hidden="true">*</b></span>
@@ -109,8 +105,7 @@ export default function PatientFormPage() {
               {submitting ? "Saving patient..." : "Save patient"}
             </button>
           </div>
-        </form>
-      </Card>
-    </>
+      </form>
+    </Card>
   );
 }

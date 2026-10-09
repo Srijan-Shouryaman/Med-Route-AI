@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, CheckCircle2, FileText, FileUp, LoaderCircle, RotateCcw, UploadCloud, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, FileText, FileUp, LoaderCircle, RotateCcw, UploadCloud, X } from "lucide-react";
 import { Link, useParams } from "react-router";
 import Card from "../components/ui/Card.jsx";
 import FeedbackState from "../components/ui/FeedbackState.jsx";
 import PageHeader from "../components/ui/PageHeader.jsx";
 import StatusBadge from "../components/ui/StatusBadge.jsx";
+import { getReport } from "../services/workflowApi.js";
 import { getPatient, uploadPatientReport } from "../services/patientApi.js";
 import { formatDate, formatFileSize, loadFailureKind } from "../utils/formatters.js";
 
@@ -21,8 +22,9 @@ function uploadErrorMessage(error) {
   return "The report could not be uploaded. Please try again in a moment.";
 }
 
-function ReportResult({ report, onUploadAnother }) {
+function ReportResult({ report, onUploadAnother, onCancel, inline = false }) {
   const extractionSucceeded = String(report.extraction_status ?? "").toUpperCase() === "EXTRACTED";
+  const caseId = String(report.case_id ?? "").trim();
   return (
     <Card className={`report-result-card${extractionSucceeded ? " is-success" : " is-warning"}`}>
       <div className="report-result-heading">
@@ -47,19 +49,23 @@ function ReportResult({ report, onUploadAnother }) {
       </dl>
 
       <div className="report-result-actions">
-        {extractionSucceeded ? (
-          <Link className="patient-primary-button" to="/cases"><FileText size={16} aria-hidden="true" /> Open case workflow</Link>
+        {extractionSucceeded && caseId ? (
+          <Link className="patient-primary-button" to={`/predictions?caseId=${encodeURIComponent(caseId)}`}>Generate Prediction <ArrowRight size={15} aria-hidden="true" /></Link>
         ) : null}
         <button className="patient-secondary-button" type="button" onClick={onUploadAnother}><RotateCcw size={15} aria-hidden="true" /> Upload another report</button>
+        {inline ? <button className="patient-secondary-button" type="button" onClick={onCancel}>Back to patient details</button> : null}
       </div>
     </Card>
   );
 }
 
-export default function ReportUploadPage() {
-  const { patientId } = useParams();
+export default function ReportUploadPage({ patientRecord = null, inline = false, onCancel } = {}) {
+  const { patientId: routePatientId } = useParams();
+  const patientId = patientRecord?.patient_id ?? routePatientId;
   const fileInputRef = useRef(null);
-  const [patientState, setPatientState] = useState({ status: "loading", patient: null });
+  const [patientState, setPatientState] = useState(() => patientRecord
+    ? { status: "success", patient: patientRecord }
+    : { status: "loading", patient: null });
   const [file, setFile] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [fileError, setFileError] = useState("");
@@ -70,6 +76,10 @@ export default function ReportUploadPage() {
 
   useEffect(() => {
     let active = true;
+    if (patientRecord) {
+      setPatientState({ status: "success", patient: patientRecord });
+      return () => { active = false; };
+    }
     if (!/^\d+$/.test(patientId ?? "") || Number(patientId) <= 0) {
       setPatientState({ status: "not-found", patient: null });
       return () => { active = false; };
@@ -82,7 +92,7 @@ export default function ReportUploadPage() {
         setPatientState({ status: error?.status === 404 ? "not-found" : loadFailureKind(error), patient: null });
       });
     return () => { active = false; };
-  }, [patientId, revision]);
+  }, [patientId, patientRecord, revision]);
 
   function selectFile(candidate) {
     setRequestError("");
@@ -111,7 +121,16 @@ export default function ReportUploadPage() {
     setRequestError("");
     try {
       const result = await uploadPatientReport(patientState.patient.patient_id, file);
-      setReport(result);
+      let resultForDisplay = result;
+      if (String(result.extraction_status ?? "").toUpperCase() === "EXTRACTED" && result.report_id != null) {
+        try {
+          const reportDetails = await getReport(result.report_id);
+          resultForDisplay = { ...result, case_id: reportDetails.case_id };
+        } catch {
+          // Keep the successful upload result if the related case lookup is unavailable.
+        }
+      }
+      setReport(resultForDisplay);
     } catch (error) {
       setRequestError(uploadErrorMessage(error));
     } finally {
@@ -123,7 +142,7 @@ export default function ReportUploadPage() {
     const notFound = patientState.status === "not-found";
     return (
       <>
-        <PageHeader eyebrow="Report intake" title="Upload medical report" />
+        {!inline ? <PageHeader eyebrow="Report intake" title="Upload medical report" /> : null}
         <Card className="patient-detail-card">
           <FeedbackState
             type={patientState.status === "loading" ? "loading" : notFound ? "empty" : patientState.status}
@@ -142,20 +161,24 @@ export default function ReportUploadPage() {
   const patient = patientState.patient;
   return (
     <>
-      <PageHeader
-        eyebrow="Report intake"
-        title="Upload medical report"
-        description="Select a PDF report to store it with this patient and begin text extraction."
-        actions={<Link className="patient-back-link" to={`/patients/${patient.patient_id}`}><ArrowLeft size={15} aria-hidden="true" /> Patient profile</Link>}
-      />
+      {!inline ? (
+        <>
+          <PageHeader
+            eyebrow="Report intake"
+            title="Upload medical report"
+            description="Select a PDF report to store it with this patient and begin text extraction."
+            actions={<Link className="patient-back-link" to={`/patients/${patient.patient_id}`}><ArrowLeft size={15} aria-hidden="true" /> Patient profile</Link>}
+          />
 
-      <div className="upload-patient-context">
-        <span className="patient-profile-icon"><FileText size={19} aria-hidden="true" /></span>
-        <span><small>Uploading for</small><strong>{patient.full_name}</strong><small>Reference {patient.patient_ref_id}</small></span>
-      </div>
+          <div className="upload-patient-context">
+            <span className="patient-profile-icon"><FileText size={19} aria-hidden="true" /></span>
+            <span><small>Uploading for</small><strong>{patient.full_name}</strong><small>Reference {patient.patient_ref_id}</small></span>
+          </div>
+        </>
+      ) : null}
 
       {report ? (
-        <ReportResult report={report} onUploadAnother={clearFile} />
+        <ReportResult report={report} onUploadAnother={clearFile} onCancel={onCancel} inline={inline} />
       ) : (
         <Card className="report-upload-card">
           <div className="report-upload-intro">
@@ -216,7 +239,11 @@ export default function ReportUploadPage() {
           ) : null}
 
           <div className="report-upload-actions">
-            <Link className="patient-secondary-button" to={`/patients/${patient.patient_id}`}>Cancel</Link>
+            {inline ? (
+              <button className="patient-secondary-button" type="button" disabled={uploading} onClick={onCancel}>Cancel</button>
+            ) : (
+              <Link className="patient-secondary-button" to={`/patients/${patient.patient_id}`}>Cancel</Link>
+            )}
             <button className="patient-primary-button" type="button" disabled={!file || uploading} onClick={handleUpload}>
               {uploading ? <LoaderCircle className="patient-spin" size={16} aria-hidden="true" /> : <FileUp size={16} aria-hidden="true" />}
               {uploading ? "Processing report..." : "Upload report"}

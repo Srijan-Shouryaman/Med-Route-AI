@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ClipboardList, Search } from "lucide-react";
+import { AlertTriangle, ArrowRight, Search } from "lucide-react";
 import { Link } from "react-router";
 import Card from "../components/ui/Card.jsx";
 import FeedbackState from "../components/ui/FeedbackState.jsx";
-import PageHeader from "../components/ui/PageHeader.jsx";
 import StatusBadge from "../components/ui/StatusBadge.jsx";
 import { getCases, getCaseHistory } from "../services/dashboardApi.js";
 import { formatDate, loadFailureKind } from "../utils/formatters.js";
@@ -43,25 +42,7 @@ export default function CasesPage() {
   }, [search, state.cases, statusFilter]);
 
   return (
-    <>
-      <PageHeader
-        eyebrow="Clinical workflow"
-        title="Cases"
-        description="Review cases across the clinical workflow and open a case to see its history."
-      />
-
-      <Card className="case-intro-card">
-        <span className="case-intro-icon"><ClipboardList size={19} aria-hidden="true" /></span>
-        <div>
-          <h2>Case lifecycle</h2>
-          <p>Case status and history below come from the clinical workflow records.</p>
-        </div>
-        <div className="workflow-statuses">
-          {["Uploaded", "Predicted", "Under Review", "Assigned", "In Progress", "Resolved"].map((status) => <StatusBadge key={status} status={status} />)}
-        </div>
-      </Card>
-
-      <Card className="case-list-card">
+    <Card className="case-list-card">
         <div className="workflow-list-toolbar">
           <div>
             <p className="card-eyebrow">Case work queue</p>
@@ -107,10 +88,10 @@ export default function CasesPage() {
                 <tr>
                   <th scope="col">Case ID</th>
                   <th scope="col">Patient reference</th>
-                  <th scope="col">Priority</th>
+                  <th scope="col">Priority / Urgency</th>
                   <th scope="col">Submitted</th>
                   <th scope="col">Status</th>
-                  <th scope="col">Urgency</th>
+                  <th scope="col">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -118,12 +99,19 @@ export default function CasesPage() {
                   <tr key={caseRecord.case_id}>
                     <td><Link className="patient-reference workflow-case-link" to={`/cases/${encodeURIComponent(caseRecord.case_id)}`}>{caseRecord.case_id}</Link></td>
                     <td>{caseRecord.patient_ref_id || "—"}</td>
-                    <td>{caseRecord.priority || "—"}</td>
+                    <td>
+                      <div className="case-priority-urgency">
+                        <span className="case-priority-value">{caseRecord.priority || "\u2014"}</span>
+                        <span className={`case-urgency-value${caseRecord.is_emergency ? " is-urgent" : ""}`}>
+                          {caseRecord.is_emergency
+                            ? <><AlertTriangle size={13} aria-hidden="true" /> Urgent</>
+                            : "Routine"}
+                        </span>
+                      </div>
+                    </td>
                     <td>{formatDate(caseRecord.submitted_at, { includeTime: true })}</td>
                     <td><StatusBadge status={caseRecord.status}>{caseRecord.status || "Unknown"}</StatusBadge></td>
-                    <td>{caseRecord.is_emergency
-                      ? <span className="dashboard-emergency"><AlertTriangle size={13} aria-hidden="true" /> Urgent</span>
-                      : "Routine"}</td>
+                    <td><Link className="patient-view-link" to={`/cases/${encodeURIComponent(caseRecord.case_id)}`}>View case <ArrowRight size={13} aria-hidden="true" /></Link></td>
                   </tr>
                 ))}
               </tbody>
@@ -133,7 +121,6 @@ export default function CasesPage() {
         {state.status === "success" && state.cases.length > 0 ? (
           <p className="patient-table-footnote">Showing {filteredCases.length} of {state.cases.length} cases</p>
         ) : null}
-      </Card>
-    </>
+    </Card>
   );
 }

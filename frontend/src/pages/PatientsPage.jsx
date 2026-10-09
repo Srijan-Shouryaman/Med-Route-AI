@@ -3,7 +3,6 @@ import { ArrowRight, Search, UserRoundPlus } from "lucide-react";
 import { Link } from "react-router";
 import Card from "../components/ui/Card.jsx";
 import FeedbackState from "../components/ui/FeedbackState.jsx";
-import PageHeader from "../components/ui/PageHeader.jsx";
 import { formatDate, loadFailureKind } from "../utils/formatters.js";
 import { getPatients } from "../services/patientApi.js";
 
@@ -39,16 +38,16 @@ export default function PatientsPage() {
 
   return (
     <>
-      <PageHeader
-        eyebrow="Patient records"
-        title="Patients"
-        description="Find patient records and manage report intake from each patient profile."
-        actions={(
-          <Link className="patient-primary-button" to="/patients/new">
-            <UserRoundPlus size={16} aria-hidden="true" /> Add patient
-          </Link>
-        )}
-      />
+      <Card className="patient-create-card">
+        <span className="patient-create-icon"><UserRoundPlus size={19} aria-hidden="true" /></span>
+        <div className="patient-create-copy">
+          <h2>Add a new patient</h2>
+          <p>Create a patient record to manage medical reports and cases.</p>
+        </div>
+        <Link className="patient-primary-button patient-create-link" to="/patients/new">
+          Add patient <ArrowRight size={15} aria-hidden="true" />
+        </Link>
+      </Card>
 
       <Card className="patient-list-card">
         <div className="patient-list-toolbar">

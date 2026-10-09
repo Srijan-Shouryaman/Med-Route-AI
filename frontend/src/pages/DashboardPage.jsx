@@ -1,30 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
-  AlertTriangle,
-  ArrowUpRight,
+  ArrowRight,
+  BarChart3,
   Brain,
   CheckCircle2,
   ClipboardList,
-  Clock3,
+  FileText,
   LoaderCircle,
+  UserRound,
+  Users,
 } from "lucide-react";
 import { Link } from "react-router";
 import Card from "../components/ui/Card.jsx";
 import FeedbackState from "../components/ui/FeedbackState.jsx";
-import PageHeader from "../components/ui/PageHeader.jsx";
 import StatusBadge from "../components/ui/StatusBadge.jsx";
-import TeamPerformanceTable from "../components/TeamPerformanceTable.jsx";
-import {
-  getAssignments,
-  getCaseHistory,
-  getCases,
-  getDepartments,
-  getPredictions,
-  getRecommendations,
-  getTeamPerformance,
-  getTeams,
-} from "../services/dashboardApi.js";
+import { getCaseHistory, getCases, getPredictions } from "../services/dashboardApi.js";
+import { getPatients } from "../services/patientApi.js";
 
 function useDashboardResource(load, label) {
   const [revision, setRevision] = useState(0);
@@ -68,13 +60,22 @@ function isFailure(resource) {
   return ["error", "network", "unauthorized"].includes(resource.status);
 }
 
+function resourceGroupState(resources) {
+  const failures = resources.filter(isFailure);
+  if (failures.length > 0) return { status: "error", failures };
+  if (resources.some((resource) => resource.status === "loading")) {
+    return { status: "loading", failures: [] };
+  }
+  return { status: "success", failures: [] };
+}
+
 function FailureNotice({ resources, message }) {
   const failures = resources.filter(isFailure);
   if (failures.length === 0) return null;
 
   return (
     <div className="dashboard-inline-error" role="alert">
-      <span>{message ?? "Some dashboard data could not be loaded."}</span>
+      <span>{message}</span>
       <div className="dashboard-retry-actions">
         {failures.map((resource) => (
           <button key={resource.label} type="button" onClick={resource.retry}>
@@ -86,75 +87,12 @@ function FailureNotice({ resources, message }) {
   );
 }
 
-function ResourceFeedback({ resource, emptyTitle, emptyDescription }) {
-  if (resource.status === "loading") {
-    return <FeedbackState type="loading" title={`Loading ${resource.label}...`} compact />;
-  }
-  if (isFailure(resource)) {
-    const title = resource.status === "unauthorized"
-      ? `Access to ${resource.label} is unavailable.`
-      : resource.status === "network"
-        ? `Connection unavailable while loading ${resource.label}.`
-        : `Unable to load ${resource.label}.`;
-    return (
-      <div className="dashboard-feedback-wrap">
-        <FeedbackState
-          type={resource.status}
-          title={title}
-          description="Please try again in a moment."
-          compact
-        />
-        <button className="dashboard-retry-button" type="button" onClick={resource.retry}>
-          Retry
-        </button>
-      </div>
-    );
-  }
-  return (
-    <FeedbackState
-      type="empty"
-      title={emptyTitle ?? `No ${resource.label} available.`}
-      description={emptyDescription}
-      compact
-    />
-  );
-}
-
-function resourceGroupState(resources) {
-  const failures = resources.filter(isFailure);
-  if (failures.length > 0) return { status: "error", failures };
-  if (resources.some((resource) => resource.status === "loading")) {
-    return { status: "loading", failures: [] };
-  }
-  return { status: "success", failures: [] };
-}
-
 function formatCount(value) {
-  if (value == null || value === "") return "—";
+  if (value == null || value === "") return "\u2014";
   const number = Number(value);
   return Number.isFinite(number)
     ? new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(number)
-    : "—";
-}
-
-function formatNumber(value, digits = 1) {
-  if (value == null || value === "") return "—";
-  const number = Number(value);
-  return Number.isFinite(number)
-    ? new Intl.NumberFormat(undefined, { maximumFractionDigits: digits }).format(number)
-    : "—";
-}
-
-function formatPercent(value) {
-  if (value == null || value === "") return "—";
-  const number = Number(value);
-  if (!Number.isFinite(number)) return "—";
-  const percentage = Math.abs(number) <= 1 ? number * 100 : number;
-  return `${formatNumber(percentage)}%`;
-}
-
-function formatConfidence(value) {
-  return formatPercent(value);
+    : "\u2014";
 }
 
 function formatDateTime(value) {
@@ -167,73 +105,32 @@ function formatDateTime(value) {
   }).format(date);
 }
 
-function DashboardMetric({ label, description, icon: Icon, resources, calculate, href }) {
-  const group = resourceGroupState(resources);
-  let value = null;
-  if (group.status === "success") {
-    value = calculate(...resources.map((resource) => resource.data));
-  }
-
+function TotalCasesSummary({ caseResources, rows }) {
+  const group = resourceGroupState(caseResources);
   return (
-    <Card as="article" className="dashboard-metric-card dashboard-clickable-card" aria-busy={group.status === "loading"}>
-      <Link className="dashboard-metric-link" to={href}>
-        <div className="dashboard-metric-topline">
-          <span className="dashboard-metric-icon"><Icon size={18} aria-hidden="true" /></span>
-          <span className="dashboard-metric-label">{label}</span>
-        </div>
-        {group.status === "loading" ? (
-          <span className="dashboard-metric-loading" aria-label={`Loading ${label}`}>
-            <LoaderCircle size={20} className="is-spinning" />
-          </span>
-        ) : group.status === "error" ? (
-          <strong className="dashboard-metric-unavailable">Unavailable</strong>
-        ) : (
-          <strong className="dashboard-metric-value">{formatCount(value)}</strong>
-        )}
-        <p>{description}</p>
-      </Link>
-      {group.status === "error" ? (
-        <div className="dashboard-retry-actions metric-retry-actions">
-          {group.failures.map((resource) => (
-            <button key={resource.label} type="button" onClick={resource.retry}>
-              Retry {resource.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
+    <Card className="dashboard-total-card" aria-busy={group.status === "loading"}>
+      <h2>Total Cases</h2>
+      {group.status === "loading" ? (
+        <span className="dashboard-total-loading" aria-label="Loading total cases">
+          <LoaderCircle size={22} className="is-spinning" />
+        </span>
+      ) : group.status === "error" ? (
+        <strong className="dashboard-total-unavailable">Unavailable</strong>
+      ) : (
+        <strong className="dashboard-total-value">{formatCount(rows.length)}</strong>
+      )}
+      <p>All cases in your workspace</p>
     </Card>
   );
 }
 
-function MiniMetric({ label, resource, icon: Icon, href }) {
-  return (
-    <div className="dashboard-ai-metric" aria-busy={resource.status === "loading"}>
-      <Link className="dashboard-ai-metric-link" to={href}>
-        <span className="dashboard-ai-metric-icon"><Icon size={15} aria-hidden="true" /></span>
-        <div className="dashboard-ai-metric-copy">
-          <span>{label}</span>
-          {resource.status === "loading" ? (
-            <LoaderCircle size={16} className="is-spinning dashboard-small-spinner" aria-label={`Loading ${label}`} />
-          ) : isFailure(resource) ? (
-            <span className="dashboard-ai-metric-error">Unavailable</span>
-          ) : (
-            <strong>{formatCount(resource.data.length)}</strong>
-          )}
-        </div>
-      </Link>
-      {isFailure(resource) ? (
-        <button className="dashboard-icon-retry" type="button" onClick={resource.retry} aria-label={`Retry ${label}`}>
-          Retry
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
 function getCaseRows(caseResource, historyResource) {
-  return [caseResource, historyResource]
-    .filter((resource) => resource.status === "success")
-    .flatMap((resource) => resource.data);
+  if (caseResource.status !== "success" || historyResource.status !== "success") return [];
+  const unique = new Map();
+  [...caseResource.data, ...historyResource.data].forEach((row) => {
+    if (row?.case_id != null) unique.set(String(row.case_id), row);
+  });
+  return [...unique.values()];
 }
 
 function sortRecentCases(rows) {
@@ -247,349 +144,226 @@ function sortRecentCases(rows) {
   });
 }
 
-function getRecentPerformanceRows(rows) {
-  const records = rows.map((record, index) => {
-    const timestamp = record.last_updated ? new Date(record.last_updated).getTime() : Number.NaN;
-    return { record, index, timestamp };
-  });
-  const hasTimestamp = records.some(({ timestamp }) => Number.isFinite(timestamp));
-  if (!hasTimestamp) return rows.slice(0, 5);
-
-  return records
-    .sort((left, right) => {
-      const leftValid = Number.isFinite(left.timestamp);
-      const rightValid = Number.isFinite(right.timestamp);
-      if (!leftValid && !rightValid) return left.index - right.index;
-      if (!leftValid) return 1;
-      if (!rightValid) return -1;
-      return right.timestamp - left.timestamp || left.index - right.index;
-    })
-    .slice(0, 5)
-    .map(({ record }) => record);
+function countStatus(rows, acceptedStatuses) {
+  return rows.filter((row) => acceptedStatuses.has(String(row.status ?? "").trim().toLowerCase())).length;
 }
 
-function countByStatus(rows) {
-  const counts = new Map();
-  rows.forEach((row) => {
-    const status = typeof row.status === "string" && row.status.trim()
-      ? row.status.trim()
-      : "Status unavailable";
-    counts.set(status, (counts.get(status) ?? 0) + 1);
-  });
-  return [...counts.entries()].sort(([left], [right]) => left.localeCompare(right));
-}
-
-function CaseDataNotice({ caseResources, rows }) {
-  const group = resourceGroupState(caseResources);
-  const hasRows = rows.length > 0;
-  if (!hasRows && group.status === "loading") {
-    return <FeedbackState type="loading" title="Loading case records..." compact />;
-  }
-  if (!hasRows && group.status === "error") {
-    return <FailureNotice resources={caseResources} message="Case information is temporarily unavailable." />;
-  }
-  if (!hasRows && group.status === "success") {
-    return <FeedbackState type="empty" title="No cases available yet." compact />;
-  }
-  return null;
+function sortCasesForAttention(rows) {
+  const reviewStatuses = new Set([
+    "pending prediction",
+    "predicted",
+    "pending human review",
+    "recommended",
+    "flagged - no eligible team",
+  ]);
+  const recent = sortRecentCases(rows);
+  return [
+    ...recent.filter((row) => reviewStatuses.has(String(row.status ?? "").trim().toLowerCase())),
+    ...recent.filter((row) => !reviewStatuses.has(String(row.status ?? "").trim().toLowerCase())),
+  ];
 }
 
 function CaseWorkflow({ caseResources, rows }) {
-  const statuses = countByStatus(rows);
+  const group = resourceGroupState(caseResources);
+  const stages = [
+    { label: "Pending Prediction", icon: FileText, accent: "is-pending", count: countStatus(rows, new Set(["pending prediction"])) },
+    { label: "Pending Human Review", icon: UserRound, accent: "is-review", count: countStatus(rows, new Set(["pending human review", "recommended"])) },
+    { label: "Assigned", icon: ClipboardList, accent: "is-assigned", count: countStatus(rows, new Set(["assigned"])) },
+    { label: "In Progress", icon: Activity, accent: "is-progress", count: countStatus(rows, new Set(["in progress"])) },
+    { label: "Resolved", icon: CheckCircle2, accent: "is-resolved", count: countStatus(rows, new Set(["resolved"])) },
+  ];
 
   return (
-    <Card className="dashboard-section-card">
+    <Card className="dashboard-section-card dashboard-workflow-card">
       <div className="dashboard-section-heading">
         <div>
           <h2>Case workflow</h2>
-          <p className="card-subtitle">Overview of cases across the clinical workflow.</p>
         </div>
-        <Link className="dashboard-header-link" to="/cases">View cases <ArrowUpRight size={14} aria-hidden="true" /></Link>
+        <Link className="dashboard-header-link" to="/cases">View cases <ArrowRight size={15} aria-hidden="true" /></Link>
       </div>
-      <CaseDataNotice caseResources={caseResources} rows={rows} />
-      {statuses.length > 0 ? (
-        <div className="dashboard-status-grid">
-          {statuses.map(([status, count]) => (
-            <div className="dashboard-status-item" key={status}>
-              <StatusBadge status={status} />
-              <strong>{formatCount(count)}</strong>
-            </div>
-          ))}
-        </div>
-      ) : null}
-      {rows.length > 0 ? <FailureNotice resources={caseResources} message="Some case results could not be loaded; visible counts may be incomplete." /> : null}
-      {caseResources.some((resource) => resource.status === "loading") && rows.length > 0 ? (
-        <p className="dashboard-partial-note">Loading the remaining case records.</p>
-      ) : null}
+      {group.status === "loading" ? (
+        <FeedbackState type="loading" title="Loading case workflow..." compact />
+      ) : group.status === "error" ? (
+        <FeedbackState type="error" title="Case workflow counts are temporarily unavailable." compact />
+      ) : (
+        <>
+          {rows.length === 0 ? <p className="dashboard-empty-note">No cases are available yet.</p> : null}
+          <div className="dashboard-workflow-stages" aria-label="Case counts by workflow stage">
+            {stages.map(({ label, icon: Icon, accent, count }, index) => (
+              <div className="dashboard-workflow-step" key={label}>
+                <Link
+                  className={"dashboard-workflow-stage " + accent}
+                  to="/cases"
+                  aria-label={label + ", " + formatCount(count) + " cases. Open the Cases page and use its status filter to narrow the list."}
+                >
+                  <span className="dashboard-workflow-icon"><Icon size={19} aria-hidden="true" /></span>
+                  <span className="dashboard-workflow-copy">
+                    <span>{label}</span>
+                    <strong>{formatCount(count)}</strong>
+                  </span>
+                </Link>
+                {index < stages.length - 1 ? <ArrowRight className="dashboard-workflow-arrow" size={18} aria-hidden="true" /> : null}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </Card>
   );
 }
 
-function RecentCases({ caseResources, rows }) {
-  const recent = sortRecentCases(rows).slice(0, 6);
+function makeLookup(rows, keyField, valueField) {
+  const lookup = new Map();
+  if (!Array.isArray(rows)) return lookup;
+  rows.forEach((row) => {
+    const key = row?.[keyField];
+    if (key != null && !lookup.has(String(key))) lookup.set(String(key), row?.[valueField]);
+  });
+  return lookup;
+}
+
+function RecentCases({ caseResources, rows, predictions, patients }) {
+  const group = resourceGroupState(caseResources);
+  const recent = sortCasesForAttention(rows).slice(0, 3);
+  const departmentsByCase = useMemo(
+    () => makeLookup(predictions.status === "success" ? predictions.data : [], "case_id", "department_name"),
+    [predictions],
+  );
+  const patientNamesByReference = useMemo(
+    () => makeLookup(patients.status === "success" ? patients.data : [], "patient_ref_id", "full_name"),
+    [patients],
+  );
 
   return (
     <Card className="dashboard-section-card dashboard-recent-card">
       <div className="dashboard-section-heading">
         <div>
-          <p className="card-eyebrow">Recently submitted</p>
-          <h2>Recent cases</h2>
+          <h2>Cases requiring attention</h2>
+          <p className="card-subtitle">Recent cases that need your review or action.</p>
         </div>
-        <Link className="dashboard-header-link" to="/cases">Open cases <ArrowUpRight size={14} aria-hidden="true" /></Link>
+        <Link className="dashboard-header-link" to="/cases">View all cases <ArrowRight size={15} aria-hidden="true" /></Link>
       </div>
-      <CaseDataNotice caseResources={caseResources} rows={rows} />
-      {recent.length > 0 ? (
+      {group.status === "loading" ? (
+        <FeedbackState type="loading" title="Loading recent cases..." compact />
+      ) : group.status === "error" ? (
+        <FeedbackState type="error" title="Recent case information is temporarily unavailable." compact />
+      ) : recent.length === 0 ? (
+        <FeedbackState type="empty" title="No cases are available yet." compact />
+      ) : (
         <div className="dashboard-table-wrap">
           <table className="dashboard-table">
             <thead>
               <tr>
                 <th scope="col">Case ID</th>
+                <th scope="col">Patient</th>
+                <th scope="col">Department (Predicted)</th>
                 <th scope="col">Status</th>
                 <th scope="col">Priority</th>
                 <th scope="col">Type</th>
                 <th scope="col">Submitted</th>
+                <th scope="col">Action</th>
               </tr>
             </thead>
             <tbody>
-              {recent.map((row, index) => (
-                <tr key={row.case_id ?? `case-${index}`}>
-                  <td className="dashboard-case-id">{row.case_id ?? "—"}</td>
-                  <td><StatusBadge status={row.status} /></td>
-                  <td>{row.priority ?? "—"}</td>
-                  <td>
-                    {row.is_emergency === true
-                      ? <span className="dashboard-emergency"><AlertTriangle size={13} /> Emergency</span>
-                      : row.is_emergency === false
-                        ? "Standard"
-                        : "—"}
-                  </td>
-                  <td>{formatDateTime(row.submitted_at)}</td>
-                </tr>
-              ))}
+              {recent.map((row, index) => {
+                const caseId = row.case_id;
+                const patientName = patientNamesByReference.get(String(row.patient_ref_id ?? ""));
+                const department = departmentsByCase.get(String(caseId ?? ""));
+                return (
+                  <tr key={caseId ?? "case-" + index}>
+                    <td className="dashboard-case-id">
+                      {caseId != null
+                        ? <Link to={"/cases/" + encodeURIComponent(caseId)}>{caseId}</Link>
+                        : "\u2014"}
+                    </td>
+                    <td>{patientName || row.patient_ref_id || "Not available"}</td>
+                    <td>{department || "\u2014"}</td>
+                    <td><StatusBadge status={row.status}>{row.status || "Unknown"}</StatusBadge></td>
+                    <td><StatusBadge status={row.priority}>{row.priority || "\u2014"}</StatusBadge></td>
+                    <td>
+                      {row.is_emergency === true
+                        ? <span className="dashboard-emergency">Emergency</span>
+                        : row.is_emergency === false
+                          ? "Standard"
+                          : "\u2014"}
+                    </td>
+                    <td>{formatDateTime(row.submitted_at)}</td>
+                    <td>
+                      {caseId != null
+                        ? <Link className="dashboard-case-action" to={"/cases/" + encodeURIComponent(caseId)}>View <ArrowRight size={13} aria-hidden="true" /></Link>
+                        : "\u2014"}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
-      ) : null}
-      {rows.length > 0 ? <FailureNotice resources={caseResources} message="Some case results could not be loaded; the visible list may be incomplete." /> : null}
-    </Card>
-  );
-}
-
-function DepartmentOverview({ departments, teams }) {
-  return (
-    <Card className="dashboard-section-card">
-      <div className="dashboard-section-heading">
-        <div>
-          <p className="card-eyebrow">Organization</p>
-          <h2>Departments &amp; Teams</h2>
-          <p className="card-subtitle">Clinical departments and their active teams.</p>
-        </div>
-        <div className="dashboard-section-actions">
-          <Link className="dashboard-header-link" to="/departments">Departments <ArrowUpRight size={14} aria-hidden="true" /></Link>
-          <Link className="dashboard-header-link" to="/teams">Teams <ArrowUpRight size={14} aria-hidden="true" /></Link>
-        </div>
-      </div>
-      {departments.status !== "success" ? (
-        <ResourceFeedback resource={departments} emptyTitle="No departments available." />
-      ) : departments.data.length === 0 ? (
-        <FeedbackState type="empty" title="No departments available." compact />
-      ) : (
-        <ul className="dashboard-department-list">
-          {departments.data.map((department, index) => {
-            const activeTeams = teams.status === "success"
-              ? teams.data.filter((team) => String(team.status ?? "").trim().toLowerCase() === "active")
-              : null;
-            const relatedTeams = activeTeams?.filter(
-              (team) => String(team.department_id) === String(department.department_id),
-            ).length;
-            return (
-              <li key={department.department_id ?? `department-${index}`}>
-                <div>
-                  <strong>{department.department_name ?? "Department name unavailable"}</strong>
-                  {department.description ? <p>{department.description}</p> : null}
-                </div>
-                <span className="dashboard-department-team-count">
-                  {relatedTeams == null
-                    ? teams.status === "loading" ? "Loading teams" : "Team count unavailable"
-                    : `${formatCount(relatedTeams)} ${relatedTeams === 1 ? "active team" : "active teams"}`}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
       )}
-      {isFailure(teams) ? <FailureNotice resources={[teams]} message="Active team counts are temporarily unavailable." /> : null}
+      <FailureNotice resources={[predictions]} message="Predicted department details could not be loaded." />
+      <FailureNotice resources={[patients]} message="Patient names could not be loaded; patient references remain available." />
     </Card>
   );
 }
 
-function TeamPerformance({ resource }) {
-  return (
-    <Card className="dashboard-section-card dashboard-performance-card">
-      <div className="dashboard-section-heading">
-        <div>
-          <p className="card-eyebrow">Clinical operations</p>
-          <h2>Team Performance</h2>
-          <p className="card-subtitle">Recent performance across clinical teams.</p>
-        </div>
-        <Link className="dashboard-header-link" to="/team-performance">
-          View all metrics <ArrowUpRight size={14} aria-hidden="true" />
-        </Link>
-      </div>
-      {resource.status !== "success" ? (
-        <ResourceFeedback resource={resource} emptyTitle="No team performance data available." />
-      ) : resource.data.length === 0 ? (
-        <FeedbackState type="empty" title="No team performance data available." compact />
-      ) : (
-        <TeamPerformanceTable rows={getRecentPerformanceRows(resource.data)} />
-      )}
-    </Card>
-  );
-}
+const quickAccessItems = [
+  {
+    title: "AI Diagnosis",
+    description: "Analyze medical images and review AI-generated visual explanations.",
+    href: "/diagnosis",
+    icon: Brain,
+    accent: "is-blue",
+  },
+  {
+    title: "Team Performance",
+    description: "Review clinical team performance and operational metrics.",
+    href: "/team-performance",
+    icon: BarChart3,
+    accent: "is-purple",
+  },
+  {
+    title: "Clinical Teams",
+    description: "Explore clinical teams and their specializations.",
+    href: "/teams",
+    icon: Users,
+    accent: "is-green",
+  },
+];
 
-function RecentPredictions({ resource }) {
-  if (resource.status !== "success") {
-    return <ResourceFeedback resource={resource} emptyTitle="No AI predictions available yet." />;
-  }
-  if (resource.data.length === 0) {
-    return <FeedbackState type="empty" title="No AI predictions available yet." compact />;
-  }
-
+function QuickAccessCards() {
   return (
-    <div className="dashboard-prediction-list">
-      {resource.data.slice(0, 2).map((prediction, index) => (
-        <Link className="dashboard-prediction-row" to="/predictions" key={prediction.prediction_id ?? `prediction-${index}`}>
-          <div>
-            <strong>{prediction.case_id ?? "Case ID unavailable"}</strong>
-            <span>{prediction.department_name ?? "Department unavailable"}</span>
-          </div>
-          <div className="dashboard-prediction-confidence">
-            <span>{prediction.confidence_level_label ?? "Confidence unavailable"}</span>
-            {prediction.confidence_score != null ? <strong>{formatConfidence(prediction.confidence_score)}</strong> : null}
-          </div>
+    <nav className="dashboard-quick-access-grid" aria-label="Quick access">
+      {quickAccessItems.map(({ title, description, href, icon: Icon, accent }) => (
+        <Link className="dashboard-quick-access-link" to={href} key={title}>
+          <span className={"dashboard-quick-access-icon " + accent}><Icon size={21} aria-hidden="true" /></span>
+          <span className="dashboard-quick-access-copy">
+            <strong>{title}</strong>
+            <span>{description}</span>
+          </span>
+          <ArrowRight className="dashboard-quick-access-arrow" size={17} aria-hidden="true" />
         </Link>
       ))}
-    </div>
-  );
-}
-
-function AiInsights({ predictions, recommendations, assignments }) {
-  return (
-    <Card className="dashboard-section-card dashboard-ai-card">
-      <div className="dashboard-section-heading">
-        <div>
-          <h2>AI-Assisted Overview</h2>
-          <p className="card-subtitle">Review AI-generated insights while keeping clinical decisions under human oversight.</p>
-        </div>
-        <span className="dashboard-ai-heading-icon"><Brain size={19} aria-hidden="true" /></span>
-      </div>
-      <div className="ai-advisory-note">
-        <span><CheckCircle2 size={16} aria-hidden="true" /></span>
-        <p><strong>Advisory only.</strong> Review AI-assisted information with the appropriate clinical context.</p>
-      </div>
-      <div className="dashboard-ai-content-grid">
-        <div className="dashboard-ai-metrics">
-          <MiniMetric label="Predictions" resource={predictions} icon={Brain} href="/predictions" />
-          <MiniMetric label="Recommendations" resource={recommendations} icon={Activity} href="/recommendations" />
-          <MiniMetric label="Recorded assignments" resource={assignments} icon={ClipboardList} href="/assignments" />
-        </div>
-        <div className="dashboard-predictions-block">
-          <div className="dashboard-subsection-heading">
-            <h3>Recent Predictions</h3>
-            <Link className="dashboard-header-link" to="/predictions">View predictions <ArrowUpRight size={14} aria-hidden="true" /></Link>
-          </div>
-          <RecentPredictions resource={predictions} />
-        </div>
-      </div>
-    </Card>
+    </nav>
   );
 }
 
 export default function DashboardPage() {
   const cases = useDashboardResource(getCases, "cases");
   const history = useDashboardResource(getCaseHistory, "case history");
-  const departments = useDashboardResource(getDepartments, "departments");
-  const teams = useDashboardResource(getTeams, "clinical teams");
-  const performance = useDashboardResource(getTeamPerformance, "team performance");
   const predictions = useDashboardResource(getPredictions, "predictions");
-  const recommendations = useDashboardResource(getRecommendations, "recommendations");
-  const assignments = useDashboardResource(getAssignments, "assignments");
+  const patients = useDashboardResource(getPatients, "patients");
   const caseResources = useMemo(() => [cases, history], [cases, history]);
   const caseRows = useMemo(() => getCaseRows(cases, history), [cases, history]);
 
   return (
     <>
-      <PageHeader
-        title="Dashboard"
-        description="A current operational overview of your clinical workspace."
-      />
-
-      <section className="dashboard-summary-grid" aria-label="Operational summary">
-        <DashboardMetric
-          label="Total cases"
-          description="Cases currently in your workspace"
-          icon={ClipboardList}
-          resources={[cases, history]}
-          calculate={(currentCases, caseHistory) => currentCases.length + caseHistory.length}
-          href="/cases"
-        />
-        <DashboardMetric
-          label="Pending prediction"
-          description="Cases awaiting AI classification"
-          icon={Clock3}
-          resources={[cases]}
-          calculate={(rows) => rows.filter((row) => String(row.status ?? "").trim().toLowerCase() === "pending prediction").length}
-          href="/cases"
-        />
-        <DashboardMetric
-          label="Assigned cases"
-          description="Cases assigned for clinical review"
-          icon={CheckCircle2}
-          resources={[history]}
-          calculate={(rows) => rows.length}
-          href="/assignments"
-        />
-        <DashboardMetric
-          label="AI predictions"
-          description="AI-assisted classifications available for review"
-          icon={Brain}
-          resources={[predictions]}
-          calculate={(rows) => rows.length}
-          href="/predictions"
-        />
-      </section>
-
-      <div className="dashboard-primary-grid">
+      <div className="dashboard-workflow-layout">
+        <TotalCasesSummary caseResources={caseResources} rows={caseRows} />
         <CaseWorkflow caseResources={caseResources} rows={caseRows} />
-        <AiInsights predictions={predictions} recommendations={recommendations} assignments={assignments} />
       </div>
-
-      <RecentCases caseResources={caseResources} rows={caseRows} />
-
-      <div className="dashboard-secondary-grid">
-        <DepartmentOverview departments={departments} teams={teams} />
-        <Card className="dashboard-section-card dashboard-team-summary-card">
-          <div className="dashboard-section-heading">
-            <div>
-              <p className="card-eyebrow">Clinical operations</p>
-              <h2>Team Directory Summary</h2>
-            </div>
-            <Link className="dashboard-header-link" to="/teams">View teams <ArrowUpRight size={14} aria-hidden="true" /></Link>
-          </div>
-          {teams.status !== "success" ? (
-            <ResourceFeedback resource={teams} emptyTitle="No clinical teams available." />
-          ) : teams.data.length === 0 ? (
-            <FeedbackState type="empty" title="No clinical teams available." compact />
-          ) : (
-            <Link className="dashboard-team-total" to="/teams">
-              <strong>{formatCount(teams.data.length)}</strong>
-              <span>clinical teams across the organization</span>
-            </Link>
-          )}
-        </Card>
-      </div>
-
-      <TeamPerformance resource={performance} />
+      <FailureNotice resources={caseResources} message="Dashboard case counts could not be loaded." />
+      <RecentCases caseResources={caseResources} rows={caseRows} predictions={predictions} patients={patients} />
+      <QuickAccessCards />
     </>
   );
 }

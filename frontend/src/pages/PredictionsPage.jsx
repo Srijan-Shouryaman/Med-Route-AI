@@ -57,7 +57,7 @@ export default function PredictionsPage() {
 
   async function loadPrediction(value = caseId) {
     const cleanId = value.trim();
-    if (!cleanId) return;
+    if (!cleanId || busy) return;
     setBusy(true);
     setState({ kind: "loading", caseRecord: null, prediction: null });
     try {
@@ -66,35 +66,35 @@ export default function PredictionsPage() {
         const prediction = await getCasePrediction(cleanId);
         setState({ kind: "success", caseRecord, prediction });
       } catch (error) {
-        if (error?.status === 404) setState({ kind: "missing", caseRecord, prediction: null });
-        else setState({ kind: "error", error: errorState(error), caseRecord, prediction: null });
+        if (error?.status !== 404) {
+          setState({ kind: "error", error: errorState(error), caseRecord, prediction: null });
+          return;
+        }
+        if (!canGenerate) {
+          setState({ kind: "missing", caseRecord, prediction: null });
+          return;
+        }
+
+        try {
+          const prediction = await createCasePrediction(cleanId);
+          setState({ kind: "success", caseRecord, prediction });
+          getPredictionHistory().then((rows) => setHistory({ status: "success", rows })).catch(() => {});
+        } catch (generationError) {
+          if (generationError?.status === 409) {
+            try {
+              const [latestCaseRecord, prediction] = await Promise.all([getCaseRecord(cleanId), getCasePrediction(cleanId)]);
+              setState({ kind: "success", caseRecord: latestCaseRecord, prediction });
+              getPredictionHistory().then((rows) => setHistory({ status: "success", rows })).catch(() => {});
+              return;
+            } catch {
+              // Preserve the original conflict message if this was not a duplicate request.
+            }
+          }
+          setState({ kind: "error", error: errorState(generationError), caseRecord, prediction: null });
+        }
       }
     } catch (error) {
       setState({ kind: error?.status === 404 ? "not-found" : "error", error: errorState(error), caseRecord: null, prediction: null });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function generatePrediction() {
-    if (!canGenerate || !caseId.trim()) return;
-    setBusy(true);
-    try {
-      const prediction = await createCasePrediction(caseId.trim());
-      const caseRecord = await getCaseRecord(caseId.trim()).catch(() => state.caseRecord);
-      setState({ kind: "success", caseRecord, prediction });
-      getPredictionHistory().then((rows) => setHistory({ status: "success", rows })).catch(() => {});
-    } catch (error) {
-      if (error?.status === 409) {
-        try {
-          const [caseRecord, prediction] = await Promise.all([getCaseRecord(caseId.trim()), getCasePrediction(caseId.trim())]);
-          setState({ kind: "success", caseRecord, prediction });
-          return;
-        } catch {
-          // Preserve the original conflict message if this was not a duplicate request.
-        }
-      }
-      setState({ kind: "error", error: errorState(error), caseRecord: state.caseRecord, prediction: null });
     } finally {
       setBusy(false);
     }
@@ -119,20 +119,23 @@ export default function PredictionsPage() {
 
   return (
     <>
-      <PageHeader eyebrow="AI workspace" title="Predictions" description="Load or generate the department prediction for any case ID." />
-      <Card className="workflow-action-card">
-        <div className="workflow-section-heading">
-          <span className="workflow-section-icon is-indigo"><Activity size={18} aria-hidden="true" /></span>
-          <div><p className="card-eyebrow">Case prediction</p><h2>Enter a case ID</h2></div>
+      <PageHeader title="Predictions" />
+      <Card className="workflow-action-card predictions-action-card">
+        <div className="predictions-action-layout">
+          <div className="predictions-action-intro">
+            <h2>Generate Prediction</h2>
+            <p>Load an existing prediction or generate a new department prediction for a case.</p>
+          </div>
+          <div className="predictions-action-controls">
+            <WorkflowCaseIdForm value={caseId} onChange={setCaseId} onSubmit={() => loadPrediction()} busy={busy} submitLabel="Load / Generate" placeholder="Enter case ID, e.g. C0102" />
+          </div>
         </div>
-        <WorkflowCaseIdForm value={caseId} onChange={setCaseId} onSubmit={() => loadPrediction()} busy={busy} />
-        {state.kind === "idle" ? <FeedbackState type="empty" title="Choose a case to begin." description="Predictions can be loaded or generated independently by Case ID." compact /> : null}
-        {state.kind === "loading" ? <FeedbackState type="loading" title="Loading case prediction..." compact /> : null}
+        {state.kind === "loading" ? <FeedbackState type="loading" title="Loading or generating prediction..." compact /> : null}
         {state.kind === "not-found" ? <FeedbackState type="empty" title="Case not found." description="Check the case ID and try again." compact /> : null}
         {state.kind === "missing" ? (
           <div className="workflow-dependency-note">
             <FeedbackState type="empty" title="No prediction exists for this case yet." description="Generate a prediction to continue the workflow." compact />
-            {canGenerate ? <button className="patient-primary-button" type="button" disabled={busy} onClick={generatePrediction}>Generate prediction</button> : <p className="workflow-permission-note">Your role can view predictions but cannot generate them.</p>}
+            <p className="workflow-permission-note">Your role can view predictions but cannot generate them.</p>
           </div>
         ) : null}
         {state.kind === "error" ? (

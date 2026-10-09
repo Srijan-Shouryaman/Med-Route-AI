@@ -3,7 +3,6 @@ import { ArrowRight, FileText, Search } from "lucide-react";
 import { Link } from "react-router";
 import Card from "../components/ui/Card.jsx";
 import FeedbackState from "../components/ui/FeedbackState.jsx";
-import PageHeader from "../components/ui/PageHeader.jsx";
 import StatusBadge from "../components/ui/StatusBadge.jsx";
 import { formatDate, formatFileSize, loadFailureKind } from "../utils/formatters.js";
 import { getReports } from "../services/workflowApi.js";
@@ -38,12 +37,6 @@ export default function ReportsPage() {
 
   return (
     <>
-      <PageHeader
-        eyebrow="Medical records"
-        title="Reports"
-        description="Review uploaded reports, extraction status, and their linked patient and case records."
-      />
-
       <Card className="workflow-list-card">
         <div className="workflow-list-toolbar">
           <div>

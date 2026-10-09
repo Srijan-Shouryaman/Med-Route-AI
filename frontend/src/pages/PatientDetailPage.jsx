@@ -4,6 +4,7 @@ import { Link, useLocation, useParams } from "react-router";
 import Card from "../components/ui/Card.jsx";
 import FeedbackState from "../components/ui/FeedbackState.jsx";
 import PageHeader from "../components/ui/PageHeader.jsx";
+import ReportUploadPage from "./ReportUploadPage.jsx";
 import { getPatient } from "../services/patientApi.js";
 import { formatDate, loadFailureKind } from "../utils/formatters.js";
 
@@ -20,6 +21,7 @@ export default function PatientDetailPage() {
   const { patientId } = useParams();
   const location = useLocation();
   const [revision, setRevision] = useState(0);
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [state, setState] = useState({ status: "loading", patient: null });
 
   useEffect(() => {
@@ -37,6 +39,10 @@ export default function PatientDetailPage() {
       });
     return () => { active = false; };
   }, [patientId, revision]);
+
+  useEffect(() => {
+    setIsUploadOpen(false);
+  }, [patientId]);
 
   if (state.status !== "success") {
     const isNotFound = state.status === "not-found";
@@ -80,7 +86,7 @@ export default function PatientDetailPage() {
           <div className="patient-detail-heading">
             <span className="patient-profile-icon"><UserRound size={21} aria-hidden="true" /></span>
             <div>
-              <p className="card-eyebrow">Patient profile</p>
+              <p className="card-eyebrow">Patient information</p>
               <h2>{patient.full_name || "Patient"}</h2>
               <span className="patient-reference">{patient.patient_ref_id || "—"}</span>
             </div>
@@ -101,16 +107,24 @@ export default function PatientDetailPage() {
           </div>
         </Card>
 
-        <Card className="patient-action-card">
-          <span className="patient-action-icon"><FileUp size={19} aria-hidden="true" /></span>
-          <p className="card-eyebrow">Report intake</p>
-          <h2>Upload a medical report</h2>
-          <p>Attach a PDF report to this patient. The report will be processed and, when text extraction succeeds, added to the case workflow.</p>
-          <Link className="patient-primary-button patient-action-button" to={`/patients/${patient.patient_id}/upload`}>
-            <FileUp size={16} aria-hidden="true" /> Upload medical report
-          </Link>
-          <Link className="patient-case-link" to="/cases"><ClipboardList size={15} aria-hidden="true" /> Open case workflow</Link>
-        </Card>
+        {isUploadOpen ? (
+          <ReportUploadPage key={patient.patient_id} patientRecord={patient} inline onCancel={() => setIsUploadOpen(false)} />
+        ) : (
+          <Card className="patient-detail-card patient-report-prompt-card">
+            <div className="patient-detail-heading">
+              <span className="patient-profile-icon"><FileUp size={19} aria-hidden="true" /></span>
+              <div>
+                <p className="card-eyebrow">Medical report</p>
+                <h2>Upload a medical report</h2>
+              </div>
+            </div>
+            <p className="patient-report-copy">Attach a PDF report to this patient. The report will be processed and, when text extraction succeeds, added to the case workflow.</p>
+            <button className="patient-primary-button patient-action-button" type="button" onClick={() => setIsUploadOpen(true)}>
+              <FileUp size={16} aria-hidden="true" /> Upload medical report
+            </button>
+            <Link className="patient-case-link" to="/cases"><ClipboardList size={15} aria-hidden="true" /> Open case workflow</Link>
+          </Card>
+        )}
       </div>
     </>
   );

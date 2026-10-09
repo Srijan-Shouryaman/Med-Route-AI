@@ -66,17 +66,17 @@ export const navigationSections = [
         description: "Advisory team recommendations.",
         ai: true,
       },
-    ],
-  },
-  {
-    label: "Operations",
-    items: [
       {
         label: "Assignments",
         href: "/assignments",
         icon: ClipboardList,
         description: "Human-approved case assignments.",
       },
+    ],
+  },
+  {
+    label: "Operations",
+    items: [
       {
         label: "Departments",
         href: "/departments",

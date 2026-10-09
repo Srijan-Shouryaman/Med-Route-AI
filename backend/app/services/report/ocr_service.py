@@ -25,15 +25,29 @@ def extract_text_from_pdf(file_path: str) -> str:
             f"Report file not found: {pdf_path}"
         )
 
-    reader = get_ocr_reader()
     document = pymupdf.open(pdf_path)
 
-    extracted_pages = []
-
     try:
-        total_pages = len(document)
+        pages = list(document)
+        embedded_pages = []
 
-        for page_number, page in enumerate(document, start=1):
+        for page_number, page in enumerate(pages, start=1):
+            page_text = page.get_text("text").strip()
+            if page_text:
+                embedded_pages.append(
+                    f"--- Page {page_number} ---\n"
+                    f"{page_text}"
+                )
+
+        embedded_text = "\n\n".join(embedded_pages).strip()
+        if embedded_text and prepare_ml_text(embedded_text):
+            return embedded_text
+
+        reader = get_ocr_reader()
+        extracted_pages = []
+        total_pages = len(pages)
+
+        for page_number, page in enumerate(pages, start=1):
             print(
                 f"OCR processing page "
                 f"{page_number}/{total_pages}..."

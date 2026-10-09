@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Check, ClipboardList, Search, UsersRound } from "lucide-react";
+import { ArrowRight, Check, Search, UsersRound } from "lucide-react";
 import { Link, useLocation } from "react-router";
 import Card from "../components/ui/Card.jsx";
 import FeedbackState from "../components/ui/FeedbackState.jsx";
@@ -83,7 +83,7 @@ export default function AssignmentsPage() {
 
   async function loadCase(value = caseId) {
     const cleanId = value.trim();
-    if (!cleanId) return;
+    if (!cleanId || busy) return;
     setBusy(true);
     setActionError("");
     setOverrideOpen(false);
@@ -167,11 +167,12 @@ export default function AssignmentsPage() {
 
   return (
     <>
-      <PageHeader eyebrow="Operations" title="Assignments" description="Review assignment history or load a case for human review." />
-      <Card className="workflow-action-card">
-        <div className="workflow-section-heading"><span className="workflow-section-icon"><ClipboardList size={18} aria-hidden="true" /></span><div><p className="card-eyebrow">Human review</p><h2>Load a case by ID</h2></div></div>
-        <WorkflowCaseIdForm value={caseId} onChange={setCaseId} onSubmit={() => loadCase()} busy={busy} />
-        {state.kind === "idle" ? <FeedbackState type="empty" title="Choose a case to review." description="Load the prediction, recommendations, and any existing assignment for the selected case." compact /> : null}
+      <PageHeader eyebrow="AI Workspace" title="Assignments" description="Review assignment history or load a case for human review." />
+      <Card className="workflow-action-card assignments-action-card">
+        <div className="assignments-action-layout">
+          <div className="workflow-section-heading assignments-action-heading"><div><h2>Load a case for review</h2><p className="assignments-action-description">Load the case's prediction, recommendations, and existing assignment for review.</p></div></div>
+          <div className="assignments-action-controls"><WorkflowCaseIdForm value={caseId} onChange={setCaseId} onSubmit={() => loadCase()} busy={busy} submitLabel="Load / Review" placeholder="Enter case ID, e.g. C0102" /></div>
+        </div>
         {state.kind === "loading" ? <FeedbackState type="loading" title="Loading case review details..." compact /> : null}
         {state.kind === "not-found" ? <FeedbackState type="empty" title="Case not found." description="Check the case ID and try again." compact /> : null}
         {state.kind === "error" ? <div className="workflow-action-feedback"><FeedbackState type={state.error?.kind ?? "error"} title={state.error?.kind === "unauthorized" ? "Assignment access is unavailable." : state.error?.kind === "network" ? "Could not connect to human review." : "Unable to load assignment details."} description={state.error?.message} compact /><button className="patient-secondary-button" type="button" disabled={busy} onClick={() => loadCase()}>Retry</button></div> : null}
@@ -193,8 +194,8 @@ export default function AssignmentsPage() {
             </div>
             {!canReview ? <p className="workflow-permission-note">Your role can view review details but cannot approve or override assignments.</p> : (
               <div className="workflow-review-actions">
-                <button className="patient-primary-button" type="button" disabled={busy} onClick={approve}><Check size={15} aria-hidden="true" /> Approve AI recommendation</button>
-                <button className="patient-secondary-button" type="button" disabled={busy || !eligibleTeams.length} onClick={() => { setOverrideOpen((open) => !open); setActionError(""); }}><UsersRound size={15} aria-hidden="true" /> Override assignment</button>
+                <button className={`patient-primary-button review-action-button ${overrideOpen ? "is-unselected" : "is-selected"}`} type="button" aria-pressed={!overrideOpen} disabled={busy} onClick={() => { if (overrideOpen) { setOverrideOpen(false); setActionError(""); return; } approve(); }}><Check size={15} aria-hidden="true" /> Approve AI recommendation</button>
+                <button className={`patient-secondary-button review-action-button ${overrideOpen ? "is-selected" : "is-unselected"}`} type="button" aria-pressed={overrideOpen} disabled={busy || !eligibleTeams.length} onClick={() => { setOverrideOpen((open) => !open); setActionError(""); }}><UsersRound size={15} aria-hidden="true" /> Override assignment</button>
               </div>
             )}
             {canReview && state.teamLoadError ? <p className="workflow-permission-note">{state.teamLoadError} Override is unavailable until the eligible team list loads; the recommendation can still be approved.</p> : null}
